@@ -1,0 +1,334 @@
+import requests
+import random
+import time
+from datetime import datetime
+import re
+from random import choice
+
+table = 'fZodR9XQDSUm21yCkr6zBqiveYah8bt4xsWpHnJE7jL5VG3guMTKNPAwcF'
+tr = {}
+for i in range(58):
+    tr[table[i]] = i
+s = [11, 10, 3, 8, 4, 6, 2, 9, 5, 7]
+xor = 177451812
+add = 100618342136696320
+
+
+def _dec(x):
+    r = 0
+    for i in range(10):
+        r += tr[x[s[i]]] * 58 ** i
+    return (r - add) ^ xor
+
+
+def _enc(x):
+    x = (x ^ xor) + add
+    r = list('BV          ')
+    for i in range(10):
+        r[s[i]] = table[x // 58 ** i % 58]
+    return ''.join(r)
+
+
+async def get_today_in_history():
+    dr = re.compile(r'<[^>]+>', re.S)
+
+    date = datetime.today()
+    f_date = date.strftime('%m%d')
+
+    url = f'https://baike.baidu.com/cms/home/eventsOnHistory/{f_date[:2]}.json'
+    header = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                      'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36'}
+
+    resp = requests.get(url, headers=header)
+
+    data = resp.json()[f_date[:2]][f_date]
+
+    detail = choice(data)
+
+    year = detail['year']
+    festival = detail['festival']
+    title = dr.sub('', detail['title'])
+    desc = dr.sub('', detail['desc'])
+
+    if festival:
+        msg = '🎉今天是' + festival + '🎉\n' + year + '年 | ' + title + desc
+    else:
+        msg = year + '年 | ' + title + desc
+
+    return msg
+
+
+async def get_one_sentence_a_day():
+    url = 'https://apiv3.shanbay.com/weapps/dailyquote/quote/'
+    r = requests.get(url)
+    response_dict = r.json()
+    formatted = response_dict['content'] + '\n' + response_dict['translation']
+    return formatted
+
+
+async def get_five_sayings():
+    url = 'https://api.ooopn.com/yan/api.php'
+    headers = {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+            ' AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36'
+    }
+    r = requests.get(url, headers=headers)
+    response_dict = r.json()
+    return response_dict['hitokoto'] + '\n    from ' + response_dict['source']
+
+
+async def get_garbage_classification(arg):
+    host = 'https://www.98api.cn'
+    path = '/api/rubbish.php'
+    params = {'kw': arg}
+    url = host + path
+
+    r = requests.get(url, params=params)
+    resp = r.json()
+
+    if resp:
+        return '\n'.join([i['key'] + ' 是 ' + i['type'] for i in resp])
+    else:
+        return 'buzhidao'
+
+
+async def get_a_joke():
+    url = 'https://www.mxnzp.com/api/jokes/list/random'
+    r = requests.get(url)
+    response_dict = r.json()
+    data = response_dict['data']
+    one_joke = random.choice(data)['content']
+    return one_joke
+
+
+async def get_news():
+    url = 'http://c.m.163.com/nc/article/headline/T1348647853363/0-40.html'
+    r = requests.get(url)
+    response_dict = r.json()
+    b = response_dict['T1348647853363']
+    n = random.choice(b)
+    content = '【' + n['source'] + n['ptime'] + '】\n    ' + n['title'] + '\n    ' + n[
+        'digest'] + '...\n'
+    if n['url_3w']:
+        content += n['url_3w']
+    else:
+        content += '暂无数据'
+    return content
+
+
+async def get_weather_of_city(city: str) -> str:
+    url = f'https://api.ooopn.com/weather/api.php?city={city}'
+    try:
+        r = requests.post(url)
+        resp = r.json()
+        dialect = resp['data']['forecast'][0]
+        formatted = (
+                resp['data']['city'] + '  ' + dialect['type'] + '  ' + dialect['date'] + '\n' + '当前温度 '
+                + resp['data']['wendu'] + '℃' + '\n' + dialect['fengxiang'] + '  '
+                + dialect['fengli'].lstrip('<![CDATA[').rstrip(']]>') + '\n' + '最高温度' + dialect['high'][3:]
+                + '\n' + '最低温度' + dialect['low'][3:] + '\n' +
+                resp['data']['ganmao']
+        )
+    except KeyError:
+        return 'error,无数据或语法错误'
+    return formatted
+
+
+async def get_weather_of_city_n_date(city: str, date: str):
+    if date == '今天' or not date:
+        date = 0
+    elif date == '明天':
+        date = 1
+    elif date == '后天':
+        date = 2
+    elif date == '大后天':
+        date = 3
+    elif date == '大大后天':
+        date = 4
+    else:
+        return '日期不支持'
+    url = f'https://api.ooopn.com/weather/api.php?city={city}'
+    try:
+        r = requests.post(url)
+        resp = r.json()
+        dialect = resp['data']['forecast'][date]
+        formatted = (
+                resp['data']['city'] + '  ' + dialect['type'] + '  ' + dialect['date'] + '\n' + '当前温度 '
+                + resp['data']['wendu'] + '℃' + '\n' + dialect['fengxiang'] + '  '
+                + dialect['fengli'].lstrip('<![CDATA[').rstrip(']]>') + '\n' + '最高温度' + dialect['high'][3:]
+                + '\n' + '最低温度' + dialect['low'][3:] + '\n' +
+                resp['data']['ganmao']
+        )
+    except KeyError:
+        return 'error,无数据或语法错误'
+    return formatted
+
+
+async def get_daily_zhihu() -> str:
+    header = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                            'Chrome/79.0.3945.79 Safari/537.36'}
+
+    resp = requests.get('https://news-at.zhihu.com/api/4/stories/latest', headers=header)
+
+    resp = resp.json()
+
+    stories = resp['stories']
+    top_stories = resp['top_stories']
+
+    all_stories = stories + top_stories
+    data = random.choice(all_stories)
+
+    data = data['title'] + '\n' + data['hint'] + '\n' + data['url']
+
+    return data
+
+
+async def get_gank(gank_type='all') -> str:
+    resp = requests.get(f'http://gank.io/api/random/data/{gank_type}/1')
+
+    resp = resp.json()
+    resp = resp['results'][0]
+
+    data = resp['type'] + ' / ' + resp['desc'] + ' / ' + resp['who'] + '\n' + resp['publishedAt'] + '\n' + resp['url']
+
+    return data
+
+
+async def get_steam_sale() -> str:
+    header = {
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/79.0.3945.79 Safari/537.36'}
+
+    resp = requests.get('http://www.vgtime.com/steam/steamapi.php?saleType=PROMOTIONAL+PRICE', headers=header)
+
+    resp = resp.json()
+
+    # count = resp['count']
+    data = resp['data']
+
+    detail = random.choice(data)
+    msg = (
+            detail['name'] + '   ' + detail['saleRate'] + '\n原价: ￥' + detail['oldPrice'] + '   现价: ￥' +
+            detail['nowPrice'] + '\n平台: ' + detail['platform'] + '\n' + detail['rateInfo'].replace('<br>', '  ') +
+            f'https://store.steampowered.com/app/{detail["aid"]}'
+    )
+
+    return msg
+
+
+async def get_calendar(date=None) -> str:
+    if not date:
+        date = time.strftime('%Y%m%d', time.localtime(time.time()))
+    url = f'https://www.mxnzp.com/api/holiday/single/{date}'
+    r = requests.get(url)
+    response_dict = r.json()
+    dialect = response_dict['data']
+    formatted = (
+            dialect['date'] + '  ' + '农历' + dialect['lunarCalendar'] + '  ' + dialect['solarTerms'] + '  ' +
+            dialect['typeDes'] + '\n' + '今年是' + dialect['yearTips'] + dialect['chineseZodiac'] + '年' + '  ' +
+            '今日星座是' + dialect['constellation'] + '\n' + '今天是本年度第' + str(dialect['weekOfYear']) +
+            '周 第' + str(dialect['dayOfYear']) + '天\n' + '宜 ' + dialect['suit'] + '\n忌 ' + dialect['avoid']
+    )
+    return formatted
+
+
+async def get_isbn_book(isbn):
+    url = f'https://api.isoyu.com/books/isbn/?isbn={isbn}'
+    resp = requests.get(url)
+    data = resp.json()
+    try:
+        if data['page'] != '未知':
+            msg = (
+                    '《' + data['title'] + '》  ' + data['description'] + '\n作者：' + data['author'][0]['name'] + '  ' +
+                    data['designed'] + '\n' + data['page'][1:] + '页 ' + data['price'] + ' ' + data['published']
+            )
+        else:
+            msg = (
+                    '《' + data['title'] + '》  ' + data['description'] + '\n作者：' + data['author'][0]['name'] + '  ' +
+                    data['designed'] + '\n' + '页数未知' + data['price'] + ' ' + data['published']
+            )
+    except TypeError:
+        msg = '无数据，请确认ISBN正确'
+
+    return msg
+
+
+# 下次一定做图
+async def get_steam_sale_list() -> str:
+    header = {
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/79.0.3945.79 Safari/537.36'}
+
+    resp = requests.get('http://www.vgtime.com/steam/steamapi.php?saleType=PROMOTIONAL+PRICE', headers=header)
+
+    resp = resp.json()
+
+    # count = resp['count']
+    data = resp['data']
+
+    msg = '\n'
+
+    details = random.sample(data, 3)
+    formatted = (
+        [detail['name'] + '   ' + detail['saleRate'] + '\n原价: ￥' + detail['oldPrice'] + '   现价: ￥' +
+         detail['nowPrice'] + '\n平台: ' + detail['platform'] + '\n' + detail['rateInfo'].replace('<br>', '  ') +
+         f'https://store.steampowered.com/app/{detail["aid"]}' for detail in details]
+    )
+
+    msg = msg.join(formatted)
+    return str(msg)
+
+
+async def get_edu_news() -> str:
+    header = {
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/79.0.3945.79 Safari/537.36'}
+    resp = requests.get('https://jiemodui.com/Home/EditCate/getRelNews?cateId=54&page=1', headers=header)
+    resp = resp.json()
+    if resp['code'] == '000':
+        data = random.sample(resp['list'], 1)[0]
+        split = '\n'
+        return split.join([data['name'], data['brief'], 'https://jiemodui.com/N/' + data['id'] + '.html'])
+    else:
+        return ''
+
+
+async def get_knowledge_from_baidu() -> str:
+    url = 'https://baike.baidu.com/api/vbaike/knowledgelist'
+    params = {'count': 20}
+    header = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                      'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36'}
+
+    resp = requests.get(url, params, headers=header, verify=False)
+
+    data = random.choice(resp.json())
+
+    formatted = data['desc'] + '\n' + data['link']
+
+    return formatted
+
+
+async def get_hitokoto() -> str:
+    url = 'https://api.imjad.cn/hitokoto/'
+    resp = requests.get(url)
+    return resp.text
+
+
+async def marketing_gen(subject: str, incident: str, another_way_of_saying: str) -> str:
+    return f'''    {subject}{incident}是怎么回事呢？{subject}相信大家都很熟悉，但是{subject}{incident}是怎么回事呢，下面就让小编带大家一起了解吧。
+    {subject}{incident}，其实就是{another_way_of_saying}，大家可能会很惊讶{subject}怎么会{incident}呢？但事实就是这样，小编也感到非常惊讶。
+    这就是关于{subject}{incident}的事情了，大家有什么想法呢，欢迎在评论区告诉小编一起讨论哦！'''
+
+
+async def dec(bv):
+    return _dec(bv)
+
+
+async def enc(av):
+    if isinstance(av, int):
+        return _enc(av)
+    else:
+        return
